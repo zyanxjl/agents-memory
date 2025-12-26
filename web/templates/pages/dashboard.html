@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div x-data="dashboardPage()" x-init="init()">
+    
+    <!-- 页面标题 -->
+    <div class="mb-8">
+        <h1 class="text-2xl font-bold">仪表盘</h1>
+        <p class="text-slate-400 mt-1">系统概览与统计数据</p>
+    </div>
+    
+    <!-- 统计卡片 -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <!-- 总记忆数 -->
+        <div class="stat-card">
+            <div class="stat-icon bg-gradient-to-br from-blue-500 to-blue-600">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+            </div>
+            <div>
+                <div class="stat-value" x-text="stats.total_memories || 0"></div>
+                <div class="stat-label">总记忆数</div>
+            </div>
+        </div>
+        
+        <!-- 今日新增 -->
+        <div class="stat-card">
+            <div class="stat-icon bg-gradient-to-br from-green-500 to-green-600">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                </svg>
+            </div>
+            <div>
+                <div class="stat-value" x-text="stats.today_added || 0"></div>
+                <div class="stat-label">今日新增</div>
+            </div>
+        </div>
+        
+        <!-- 文档数 -->
+        <div class="stat-card">
+            <div class="stat-icon bg-gradient-to-br from-purple-500 to-purple-600">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+            </div>
+            <div>
+                <div class="stat-value" x-text="stats.total_documents || 0"></div>
+                <div class="stat-label">知识文档</div>
+            </div>
+        </div>
+        
+        <!-- 实体数 -->
+        <div class="stat-card">
+            <div class="stat-icon bg-gradient-to-br from-orange-500 to-orange-600">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                </svg>
+            </div>
+            <div>
+                <div class="stat-value" x-text="stats.total_entities || 0"></div>
+                <div class="stat-label">图谱实体</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 图表区域 -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <!-- 记忆类型分布 -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="text-lg font-semibold">记忆类型分布</h3>
+            </div>
+            <div class="card-body">
+                <div id="memory-type-chart" class="h-64"></div>
+            </div>
+        </div>
+        
+        <!-- 记忆增长趋势 -->
+        <div class="card">
+            <div class="card-header flex justify-between items-center">
+                <h3 class="text-lg font-semibold">记忆增长趋势</h3>
+                <select x-model="trendPeriod" @change="loadTrends()" class="form-select w-32 text-sm">
+                    <option value="day">今日</option>
+                    <option value="week">本周</option>
+                    <option value="month">本月</option>
+                </select>
+            </div>
+            <div class="card-body">
+                <div id="memory-trend-chart" class="h-64"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 系统状态 -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="text-lg font-semibold">系统状态</h3>
+        </div>
+        <div class="card-body">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <template x-for="(component, name) in health.components" :key="name">
+                    <div class="p-4 rounded-lg bg-slate-700/30">
+                        <div class="flex items-center space-x-2 mb-2">
+                            <span class="w-2 h-2 rounded-full"
+                                  :class="{
+                                      'bg-green-500': component.status === 'healthy',
+                                      'bg-yellow-500': component.status === 'degraded' || component.status === 'not_initialized',
+                                      'bg-red-500': component.status === 'unhealthy' || component.status === 'error'
+                                  }"></span>
+                            <span class="font-medium capitalize" x-text="name"></span>
+                        </div>
+                        <p class="text-sm text-slate-400" x-text="component.message"></p>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function dashboardPage() {
+    return {
+        stats: {},
+        health: { components: {} },
+        trendPeriod: 'week',
+        trends: {},
+        
+        async init() {
+            await Promise.all([
+                this.loadStats(),
+                this.loadHealth(),
+                this.loadTrends(),
+            ]);
+            this.renderCharts();
+        },
+        
+        async loadStats() {
+            try {
+                const response = await AnalyticsAPI.dashboard();
+                this.stats = response.data;
+            } catch (error) {
+                showToast('加载统计失败', 'error');
+            }
+        },
+        
+        async loadHealth() {
+            try {
+                const response = await AnalyticsAPI.health();
+                this.health = response;
+            } catch (error) {
+                console.error('加载健康状态失败', error);
+            }
+        },
+        
+        async loadTrends() {
+            try {
+                const response = await AnalyticsAPI.trends(this.trendPeriod);
+                this.trends = response.data;
+                this.renderTrendChart();
+            } catch (error) {
+                console.error('加载趋势失败', error);
+            }
+        },
+        
+        renderCharts() {
+            this.renderTypeChart();
+            this.renderTrendChart();
+        },
+        
+        renderTypeChart() {
+            const chartDom = document.getElementById('memory-type-chart');
+            if (!chartDom) return;
+            
+            const chart = echarts.init(chartDom);
+            const dist = this.stats.memory_distribution || {};
+            
+            const option = {
+                tooltip: { trigger: 'item' },
+                color: ['#3b82f6', '#8b5cf6', '#22c55e', '#f97316'],
+                series: [{
+                    type: 'pie',
+                    radius: ['40%', '70%'],
+                    avoidLabelOverlap: false,
+                    itemStyle: {
+                        borderRadius: 10,
+                        borderColor: '#1e293b',
+                        borderWidth: 2
+                    },
+                    label: { show: false },
+                    emphasis: {
+                        label: { show: true, fontSize: 14, fontWeight: 'bold' }
+                    },
+                    data: [
+                        { value: dist.working || 0, name: '工作记忆' },
+                        { value: dist.episodic || 0, name: '情景记忆' },
+                        { value: dist.semantic || 0, name: '语义记忆' },
+                        { value: dist.perceptual || 0, name: '感知记忆' },
+                    ]
+                }]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', () => chart.resize());
+        },
+        
+        renderTrendChart() {
+            const chartDom = document.getElementById('memory-trend-chart');
+            if (!chartDom) return;
+            
+            const chart = echarts.init(chartDom);
+            const growth = this.trends.memory_growth || [];
+            
+            const option = {
+                tooltip: { trigger: 'axis' },
+                grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                xAxis: {
+                    type: 'category',
+                    boundaryGap: false,
+                    data: growth.map(p => p.label || formatDateTime(p.timestamp, 'MM-DD')),
+                    axisLine: { lineStyle: { color: '#475569' } },
+                    axisLabel: { color: '#94a3b8' }
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLine: { lineStyle: { color: '#475569' } },
+                    axisLabel: { color: '#94a3b8' },
+                    splitLine: { lineStyle: { color: '#334155' } }
+                },
+                series: [{
+                    type: 'line',
+                    smooth: true,
+                    data: growth.map(p => p.value),
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(99, 102, 241, 0.4)' },
+                            { offset: 1, color: 'rgba(99, 102, 241, 0.05)' }
+                        ])
+                    },
+                    lineStyle: { color: '#6366f1', width: 2 },
+                    itemStyle: { color: '#6366f1' }
+                }]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', () => chart.resize());
+        }
+    };
+}
+</script>
+{% endblock %}
+

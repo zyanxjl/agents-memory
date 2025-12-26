@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div x-data="memorySearchPage()" x-init="init()">
+    
+    <!-- 页面标题 -->
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold">记忆搜索</h1>
+        <p class="text-slate-400 mt-1">语义搜索记忆内容</p>
+    </div>
+    
+    <!-- 搜索表单 -->
+    <div class="card mb-6">
+        <div class="card-body">
+            <div class="flex gap-4">
+                <input type="text" 
+                       x-model="query"
+                       @keyup.enter="search()"
+                       class="form-input flex-1"
+                       placeholder="输入搜索关键词...">
+                <button @click="search()" class="btn btn-primary" :disabled="!query || loading">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    搜索
+                </button>
+            </div>
+            
+            <!-- 高级选项 -->
+            <div class="mt-4 flex flex-wrap gap-4">
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" x-model="searchOptions.working" id="type-working" class="rounded">
+                    <label for="type-working" class="text-sm text-slate-300">工作记忆</label>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" x-model="searchOptions.episodic" id="type-episodic" class="rounded">
+                    <label for="type-episodic" class="text-sm text-slate-300">情景记忆</label>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" x-model="searchOptions.semantic" id="type-semantic" class="rounded">
+                    <label for="type-semantic" class="text-sm text-slate-300">语义记忆</label>
+                </div>
+                <div class="flex items-center space-x-2 ml-auto">
+                    <label class="text-sm text-slate-400">最小重要性:</label>
+                    <input type="range" x-model="minImportance" min="0" max="1" step="0.1" class="w-24">
+                    <span class="text-sm" x-text="(minImportance * 100).toFixed(0) + '%'"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 搜索结果 -->
+    <div class="space-y-4">
+        <template x-if="loading">
+            <div class="flex justify-center py-12">
+                <div class="loading-spinner"></div>
+            </div>
+        </template>
+        
+        <template x-if="!loading && searched && results.length === 0">
+            <div class="text-center py-12 text-slate-400">
+                <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <p>未找到相关记忆</p>
+            </div>
+        </template>
+        
+        <template x-if="!loading && results.length > 0">
+            <div>
+                <div class="text-sm text-slate-400 mb-4">找到 <span x-text="results.length"></span> 条相关记忆</div>
+                <template x-for="(memory, index) in results" :key="memory.id">
+                    <div class="card mb-4 fade-in" :style="{ animationDelay: index * 0.05 + 's' }">
+                        <div class="card-body">
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex items-center space-x-2">
+                                    <span x-html="getMemoryTypeBadge(memory.memory_type)"></span>
+                                    <span class="text-xs text-slate-500" x-text="formatRelativeTime(memory.timestamp)"></span>
+                                </div>
+                                <div class="flex items-center space-x-3">
+                                    <span class="text-xs text-slate-400">
+                                        相关度: <span class="text-primary font-medium" x-text="((memory.relevance_score || 0) * 100).toFixed(0) + '%'"></span>
+                                    </span>
+                                    <span class="text-xs text-slate-400">
+                                        重要性: <span x-text="(memory.importance * 100).toFixed(0) + '%'"></span>
+                                    </span>
+                                </div>
+                            </div>
+                            <p class="text-slate-200" x-text="memory.content"></p>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function memorySearchPage() {
+    return {
+        query: '',
+        results: [],
+        loading: false,
+        searched: false,
+        minImportance: 0,
+        searchOptions: {
+            working: true,
+            episodic: true,
+            semantic: true,
+        },
+        
+        init() {
+            // 可以从URL参数恢复搜索状态
+        },
+        
+        async search() {
+            if (!this.query.trim()) {
+                showToast('请输入搜索关键词', 'warning');
+                return;
+            }
+            
+            this.loading = true;
+            this.searched = true;
+            
+            try {
+                const memoryTypes = [];
+                if (this.searchOptions.working) memoryTypes.push('working');
+                if (this.searchOptions.episodic) memoryTypes.push('episodic');
+                if (this.searchOptions.semantic) memoryTypes.push('semantic');
+                
+                if (memoryTypes.length === 0) {
+                    memoryTypes.push('working', 'episodic', 'semantic');
+                }
+                
+                const response = await MemoryAPI.search({
+                    query: this.query,
+                    memory_types: memoryTypes,
+                    limit: 20,
+                    min_importance: parseFloat(this.minImportance),
+                });
+                
+                this.results = response.data;
+                
+                if (this.results.length === 0) {
+                    showToast('未找到相关记忆', 'info');
+                }
+            } catch (error) {
+                showToast('搜索失败: ' + error.message, 'error');
+            } finally {
+                this.loading = false;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}
+

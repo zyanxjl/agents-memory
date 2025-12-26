@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div x-data="ragSearchPage()">
+    
+    <!-- 页面标题 -->
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold">知识检索</h1>
+        <p class="text-slate-400 mt-1">在知识库中搜索相关内容</p>
+    </div>
+    
+    <!-- 搜索表单 -->
+    <div class="card mb-6">
+        <div class="card-body">
+            <div class="flex gap-4">
+                <input type="text" 
+                       x-model="query"
+                       @keyup.enter="search()"
+                       class="form-input flex-1"
+                       placeholder="输入搜索内容...">
+                <button @click="search()" class="btn btn-primary" :disabled="!query || loading">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    检索
+                </button>
+            </div>
+            
+            <div class="mt-4 flex items-center space-x-4">
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" x-model="useAdvanced" class="rounded">
+                    <span class="text-sm text-slate-300">高级检索 (MQE + 重排序)</span>
+                </label>
+                <div class="flex items-center space-x-2">
+                    <label class="text-sm text-slate-400">返回数量:</label>
+                    <select x-model="limit" class="form-select w-20 text-sm">
+                        <option value="5">5</option>
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 搜索结果 -->
+    <div class="space-y-4">
+        <template x-if="loading">
+            <div class="flex justify-center py-12">
+                <div class="loading-spinner"></div>
+            </div>
+        </template>
+        
+        <template x-if="!loading && searched && results.length === 0">
+            <div class="text-center py-12 text-slate-400">
+                <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <p>未找到相关内容</p>
+            </div>
+        </template>
+        
+        <template x-if="!loading && results.length > 0">
+            <div>
+                <div class="text-sm text-slate-400 mb-4">找到 <span x-text="results.length"></span> 条相关内容</div>
+                <template x-for="(result, index) in results" :key="result.chunk_id">
+                    <div class="card mb-4 fade-in" :style="{ animationDelay: index * 0.05 + 's' }">
+                        <div class="card-body">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex items-center space-x-2">
+                                    <span class="badge badge-info" x-text="result.filename || '未知文档'"></span>
+                                </div>
+                                <span class="text-sm text-primary font-medium" 
+                                      x-text="'相关度: ' + (result.score * 100).toFixed(1) + '%'"></span>
+                            </div>
+                            <p class="text-slate-200 whitespace-pre-wrap" x-text="result.content"></p>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function ragSearchPage() {
+    return {
+        query: '',
+        results: [],
+        loading: false,
+        searched: false,
+        useAdvanced: false,
+        limit: 10,
+        
+        async search() {
+            if (!this.query.trim()) {
+                showToast('请输入搜索内容', 'warning');
+                return;
+            }
+            
+            this.loading = true;
+            this.searched = true;
+            
+            try {
+                const response = await RAGAPI.search({
+                    query: this.query,
+                    limit: parseInt(this.limit),
+                    use_advanced: this.useAdvanced,
+                });
+                
+                this.results = response.data || [];
+                
+                if (this.results.length === 0) {
+                    showToast('未找到相关内容', 'info');
+                }
+            } catch (error) {
+                showToast('检索失败: ' + error.message, 'error');
+            } finally {
+                this.loading = false;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}
+

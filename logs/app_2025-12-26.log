@@ -1,0 +1,30 @@
+2025-12-26 16:18:52 | INFO     | config.logging:setup_logging:70 | 日志系统初始化完成
+2025-12-26 16:18:52 | INFO     | __main__:verify:21 | INFO级别日志
+2025-12-26 16:18:52 | WARNING  | __main__:verify:22 | WARNING级别日志
+2025-12-26 16:18:52 | ERROR    | __main__:verify:23 | ERROR级别日志
+2025-12-26 16:18:52 | ERROR    | __main__:verify:29 | 异常捕获: 测试异常
+Traceback (most recent call last):
+
+  File "E:\agent_learn\agents_memory\scripts\verify_logging.py", line 45, in <module>
+    verify()
+    └ <function verify at 0x000002309CD88A40>
+
+> File "E:\agent_learn\agents_memory\scripts\verify_logging.py", line 27, in verify
+    raise ValueError("测试异常")
+
+ValueError: 测试异常
+2025-12-26 16:19:11 | INFO     | config.logging:setup_logging:70 | 日志系统初始化完成
+2025-12-26 16:19:11 | INFO     | __main__:verify:26 | INFO级别日志
+2025-12-26 16:19:11 | WARNING  | __main__:verify:27 | WARNING级别日志
+2025-12-26 16:19:11 | ERROR    | __main__:verify:28 | ERROR级别日志
+2025-12-26 16:19:11 | ERROR    | __main__:verify:34 | 异常捕获: 测试异常
+Traceback (most recent call last):
+
+  File "E:\agent_learn\agents_memory\scripts\verify_logging.py", line 51, in <module>
+    verify()
+    └ <function verify at 0x00000218B89D8A40>
+
+> File "E:\agent_learn\agents_memory\scripts\verify_logging.py", line 32, in verify
+    raise ValueError("测试异常")
+
+ValueError: 测试异常

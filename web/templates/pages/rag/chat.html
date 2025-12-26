@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div x-data="ragChatPage()" class="h-full flex flex-col">
+    
+    <!-- 页面标题 -->
+    <div class="mb-4">
+        <h1 class="text-2xl font-bold">知识问答</h1>
+        <p class="text-slate-400 mt-1">基于知识库的智能问答</p>
+    </div>
+    
+    <!-- 聊天区域 -->
+    <div class="card flex-1 flex flex-col overflow-hidden">
+        <!-- 消息列表 -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-4" id="chat-messages">
+            <template x-if="messages.length === 0">
+                <div class="text-center py-12 text-slate-400">
+                    <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+                    </svg>
+                    <p>开始对话</p>
+                    <p class="text-sm mt-2">输入问题，系统将基于知识库为您解答</p>
+                </div>
+            </template>
+            
+            <template x-for="(msg, index) in messages" :key="index">
+                <div class="fade-in" :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+                    <div class="chat-message" :class="msg.role === 'user' ? 'chat-message-user' : 'chat-message-assistant'">
+                        <p class="whitespace-pre-wrap" x-text="msg.content"></p>
+                        
+                        <!-- 来源引用 -->
+                        <template x-if="msg.sources && msg.sources.length > 0">
+                            <div class="mt-3 pt-3 border-t border-slate-600/50">
+                                <div class="text-xs text-slate-400 mb-2">参考来源:</div>
+                                <div class="space-y-1">
+                                    <template x-for="(src, i) in msg.sources.slice(0, 3)" :key="i">
+                                        <div class="text-xs text-slate-500" x-text="truncateText(src.content, 80)"></div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+            
+            <template x-if="loading">
+                <div class="flex justify-start">
+                    <div class="chat-message chat-message-assistant">
+                        <div class="flex items-center space-x-2">
+                            <div class="loading-spinner w-4 h-4"></div>
+                            <span class="text-slate-400">思考中...</span>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+        
+        <!-- 输入区域 -->
+        <div class="border-t border-slate-700/50 p-4">
+            <div class="flex gap-4">
+                <input type="text"
+                       x-model="question"
+                       @keyup.enter="ask()"
+                       class="form-input flex-1"
+                       placeholder="输入您的问题..."
+                       :disabled="loading">
+                <button @click="ask()" class="btn btn-primary" :disabled="!question || loading">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function ragChatPage() {
+    return {
+        messages: [],
+        question: '',
+        loading: false,
+        
+        async ask() {
+            if (!this.question.trim() || this.loading) return;
+            
+            const userQuestion = this.question;
+            this.question = '';
+            
+            // 添加用户消息
+            this.messages.push({
+                role: 'user',
+                content: userQuestion,
+            });
+            
+            this.scrollToBottom();
+            this.loading = true;
+            
+            try {
+                const response = await RAGAPI.ask({
+                    question: userQuestion,
+                    context_limit: 5,
+                    include_sources: true,
+                });
+                
+                // 添加助手回复
+                this.messages.push({
+                    role: 'assistant',
+                    content: response.data.answer,
+                    sources: response.data.sources,
+                });
+                
+            } catch (error) {
+                this.messages.push({
+                    role: 'assistant',
+                    content: '抱歉，处理您的问题时出现了错误：' + error.message,
+                });
+            } finally {
+                this.loading = false;
+                this.scrollToBottom();
+            }
+        },
+        
+        scrollToBottom() {
+            this.$nextTick(() => {
+                const container = document.getElementById('chat-messages');
+                if (container) {
+                    container.scrollTop = container.scrollHeight;
+                }
+            });
+        }
+    };
+}
+</script>
+{% endblock %}
+

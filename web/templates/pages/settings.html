@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div x-data="settingsPage()" x-init="init()">
+    
+    <!-- 页面标题 -->
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold">系统设置</h1>
+        <p class="text-slate-400 mt-1">查看系统状态和配置</p>
+    </div>
+    
+    <!-- 系统健康状态 -->
+    <div class="card mb-6">
+        <div class="card-header flex justify-between items-center">
+            <h3 class="text-lg font-semibold">系统健康状态</h3>
+            <span class="badge" 
+                  :class="{
+                      'badge-success': health.overall_status === 'healthy',
+                      'badge-warning': health.overall_status === 'degraded',
+                      'badge-danger': health.overall_status === 'unhealthy'
+                  }"
+                  x-text="health.overall_status === 'healthy' ? '正常' : health.overall_status === 'degraded' ? '部分降级' : '异常'">
+            </span>
+        </div>
+        <div class="card-body">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <template x-for="(component, name) in health.components" :key="name">
+                    <div class="p-4 rounded-lg bg-slate-700/30">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="font-medium capitalize" x-text="name"></span>
+                            <span class="w-3 h-3 rounded-full"
+                                  :class="{
+                                      'bg-green-500': component.status === 'healthy',
+                                      'bg-yellow-500': component.status === 'degraded' || component.status === 'not_initialized',
+                                      'bg-red-500': component.status === 'unhealthy' || component.status === 'error'
+                                  }"></span>
+                        </div>
+                        <p class="text-sm text-slate-400" x-text="component.message"></p>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 记忆管理 -->
+    <div class="card mb-6">
+        <div class="card-header">
+            <h3 class="text-lg font-semibold">记忆管理</h3>
+        </div>
+        <div class="card-body space-y-4">
+            <!-- 记忆整合 -->
+            <div class="p-4 rounded-lg bg-slate-700/30">
+                <div class="flex justify-between items-center mb-2">
+                    <div>
+                        <h4 class="font-medium">记忆整合</h4>
+                        <p class="text-sm text-slate-400">将工作记忆中重要的内容转移到长期记忆</p>
+                    </div>
+                    <button @click="consolidateMemories()" class="btn btn-secondary" :disabled="consolidating">
+                        <template x-if="consolidating">
+                            <div class="loading-spinner w-4 h-4 mr-2"></div>
+                        </template>
+                        执行整合
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 记忆遗忘 -->
+            <div class="p-4 rounded-lg bg-slate-700/30">
+                <div class="flex justify-between items-center mb-2">
+                    <div>
+                        <h4 class="font-medium">记忆遗忘</h4>
+                        <p class="text-sm text-slate-400">清理低重要性或过期的记忆</p>
+                    </div>
+                    <button @click="forgetMemories()" class="btn btn-danger" :disabled="forgetting">
+                        <template x-if="forgetting">
+                            <div class="loading-spinner w-4 h-4 mr-2"></div>
+                        </template>
+                        执行遗忘
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 系统信息 -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="text-lg font-semibold">系统信息</h3>
+        </div>
+        <div class="card-body">
+            <div class="space-y-3">
+                <div class="flex justify-between py-2 border-b border-slate-700/50">
+                    <span class="text-slate-400">系统名称</span>
+                    <span>Agent Memory System</span>
+                </div>
+                <div class="flex justify-between py-2 border-b border-slate-700/50">
+                    <span class="text-slate-400">版本</span>
+                    <span>1.0.0</span>
+                </div>
+                <div class="flex justify-between py-2 border-b border-slate-700/50">
+                    <span class="text-slate-400">API文档</span>
+                    <a href="/docs" target="_blank" class="text-primary hover:underline">/docs</a>
+                </div>
+                <div class="flex justify-between py-2">
+                    <span class="text-slate-400">健康检查</span>
+                    <a href="/health" target="_blank" class="text-primary hover:underline">/health</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function settingsPage() {
+    return {
+        health: { components: {}, overall_status: 'loading' },
+        consolidating: false,
+        forgetting: false,
+        
+        async init() {
+            await this.loadHealth();
+        },
+        
+        async loadHealth() {
+            try {
+                const response = await AnalyticsAPI.health();
+                this.health = response;
+            } catch (error) {
+                this.health = { overall_status: 'error', components: {} };
+            }
+        },
+        
+        async consolidateMemories() {
+            this.consolidating = true;
+            try {
+                const response = await MemoryAPI.consolidate({
+                    source_type: 'working',
+                    target_type: 'episodic',
+                    importance_threshold: 0.7,
+                });
+                showToast(`整合完成: ${response.data.consolidated_count} 条记忆`, 'success');
+            } catch (error) {
+                showToast('整合失败: ' + error.message, 'error');
+            } finally {
+                this.consolidating = false;
+            }
+        },
+        
+        async forgetMemories() {
+            if (!await confirmDialog('确定要执行记忆遗忘吗？这将删除低重要性的记忆。')) return;
+            
+            this.forgetting = true;
+            try {
+                const response = await MemoryAPI.forget({
+                    strategy: 'importance_based',
+                    threshold: 0.2,
+                    max_age_days: 30,
+                });
+                showToast(`遗忘完成: ${response.data.forgotten_count} 条记忆`, 'success');
+            } catch (error) {
+                showToast('遗忘失败: ' + error.message, 'error');
+            } finally {
+                this.forgetting = false;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}
+

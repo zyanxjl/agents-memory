@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div x-data="memoryListPage()" x-init="init()">
+    
+    <!-- 页面头部 -->
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-2xl font-bold">记忆管理</h1>
+            <p class="text-slate-400 mt-1">管理和浏览所有记忆</p>
+        </div>
+        <button @click="showAddModal = true" class="btn btn-primary">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+            添加记忆
+        </button>
+    </div>
+    
+    <!-- 过滤器 -->
+    <div class="card mb-6">
+        <div class="card-body flex flex-wrap gap-4">
+            <select x-model="filters.memory_type" @change="loadMemories()" class="form-select w-40">
+                <option value="">全部类型</option>
+                <option value="working">工作记忆</option>
+                <option value="episodic">情景记忆</option>
+                <option value="semantic">语义记忆</option>
+            </select>
+            <select x-model="filters.sort_by" @change="loadMemories()" class="form-select w-40">
+                <option value="timestamp">按时间</option>
+                <option value="importance">按重要性</option>
+            </select>
+            <select x-model="filters.sort_order" @change="loadMemories()" class="form-select w-32">
+                <option value="desc">降序</option>
+                <option value="asc">升序</option>
+            </select>
+        </div>
+    </div>
+    
+    <!-- 记忆列表 -->
+    <div class="space-y-4">
+        <template x-if="loading">
+            <div class="flex justify-center py-12">
+                <div class="loading-spinner"></div>
+            </div>
+        </template>
+        
+        <template x-if="!loading && memories.length === 0">
+            <div class="text-center py-12 text-slate-400">
+                <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+                <p>暂无记忆数据</p>
+                <button @click="showAddModal = true" class="btn btn-primary mt-4">添加第一条记忆</button>
+            </div>
+        </template>
+        
+        <template x-for="memory in memories" :key="memory.id">
+            <div class="card hover:border-primary/30 cursor-pointer fade-in">
+                <div class="card-body">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="flex items-center space-x-2 mb-2">
+                                <span x-html="getMemoryTypeBadge(memory.memory_type)"></span>
+                                <span class="text-xs text-slate-500" x-text="formatRelativeTime(memory.timestamp)"></span>
+                            </div>
+                            <p class="text-slate-200" x-text="truncateText(memory.content, 200)"></p>
+                        </div>
+                        <div class="flex items-center space-x-2 ml-4">
+                            <div class="text-right">
+                                <div class="text-sm font-medium" x-text="(memory.importance * 100).toFixed(0) + '%'"></div>
+                                <div class="text-xs text-slate-500">重要性</div>
+                            </div>
+                            <button @click.stop="deleteMemory(memory.id)" 
+                                    class="btn btn-ghost btn-sm text-red-400 hover:text-red-300"
+                                    title="删除">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+    
+    <!-- 分页 -->
+    <div class="flex justify-between items-center mt-6" x-show="totalPages > 1">
+        <div class="text-sm text-slate-400">
+            共 <span x-text="total"></span> 条记录
+        </div>
+        <div class="flex space-x-2">
+            <button @click="page--; loadMemories()" :disabled="page <= 1" 
+                    class="btn btn-secondary btn-sm" :class="{ 'opacity-50 cursor-not-allowed': page <= 1 }">
+                上一页
+            </button>
+            <span class="px-4 py-2 text-sm">
+                <span x-text="page"></span> / <span x-text="totalPages"></span>
+            </span>
+            <button @click="page++; loadMemories()" :disabled="page >= totalPages"
+                    class="btn btn-secondary btn-sm" :class="{ 'opacity-50 cursor-not-allowed': page >= totalPages }">
+                下一页
+            </button>
+        </div>
+    </div>
+    
+    <!-- 添加记忆模态框 -->
+    <div x-show="showAddModal" x-transition 
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div class="card w-full max-w-lg mx-4" @click.away="showAddModal = false">
+            <div class="card-header flex justify-between items-center">
+                <h3 class="text-lg font-semibold">添加记忆</h3>
+                <button @click="showAddModal = false" class="text-slate-400 hover:text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="card-body space-y-4">
+                <div>
+                    <label class="form-label">记忆内容 *</label>
+                    <textarea x-model="newMemory.content" class="form-textarea" rows="4" 
+                              placeholder="输入记忆内容..."></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label">记忆类型</label>
+                        <select x-model="newMemory.memory_type" class="form-select">
+                            <option value="auto">自动分类</option>
+                            <option value="working">工作记忆</option>
+                            <option value="episodic">情景记忆</option>
+                            <option value="semantic">语义记忆</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">重要性: <span x-text="(newMemory.importance * 100).toFixed(0) + '%'"></span></label>
+                        <input type="range" x-model="newMemory.importance" min="0" max="1" step="0.1" 
+                               class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer flex justify-end space-x-3">
+                <button @click="showAddModal = false" class="btn btn-secondary">取消</button>
+                <button @click="addMemory()" class="btn btn-primary" :disabled="!newMemory.content">保存</button>
+            </div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function memoryListPage() {
+    return {
+        memories: [],
+        loading: true,
+        page: 1,
+        pageSize: 20,
+        total: 0,
+        totalPages: 0,
+        filters: {
+            memory_type: '',
+            sort_by: 'timestamp',
+            sort_order: 'desc',
+        },
+        showAddModal: false,
+        newMemory: {
+            content: '',
+            memory_type: 'auto',
+            importance: 0.5,
+        },
+        
+        async init() {
+            await this.loadMemories();
+        },
+        
+        async loadMemories() {
+            this.loading = true;
+            try {
+                const params = {
+                    page: this.page,
+                    page_size: this.pageSize,
+                    sort_by: this.filters.sort_by,
+                    sort_order: this.filters.sort_order,
+                };
+                if (this.filters.memory_type) {
+                    params.memory_type = this.filters.memory_type;
+                }
+                
+                const response = await MemoryAPI.list(params);
+                this.memories = response.data;
+                this.total = response.total;
+                this.totalPages = response.total_pages;
+            } catch (error) {
+                showToast('加载失败: ' + error.message, 'error');
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        async addMemory() {
+            if (!this.newMemory.content.trim()) {
+                showToast('请输入记忆内容', 'warning');
+                return;
+            }
+            try {
+                await MemoryAPI.create(this.newMemory);
+                showToast('记忆添加成功', 'success');
+                this.showAddModal = false;
+                this.newMemory = { content: '', memory_type: 'auto', importance: 0.5 };
+                await this.loadMemories();
+            } catch (error) {
+                showToast('添加失败: ' + error.message, 'error');
+            }
+        },
+        
+        async deleteMemory(id) {
+            if (!await confirmDialog('确定要删除这条记忆吗？')) return;
+            try {
+                await MemoryAPI.delete(id);
+                showToast('删除成功', 'success');
+                await this.loadMemories();
+            } catch (error) {
+                showToast('删除失败: ' + error.message, 'error');
+            }
+        }
+    };
+}
+</script>
+{% endblock %}
+

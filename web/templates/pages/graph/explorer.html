@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div x-data="graphExplorerPage()" x-init="init()">
+    
+    <!-- 页面标题 -->
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-2xl font-bold">知识图谱</h1>
+            <p class="text-slate-400 mt-1">可视化浏览知识图谱</p>
+        </div>
+        <div class="flex items-center space-x-4">
+            <span class="text-sm text-slate-400">
+                实体: <span class="text-white font-medium" x-text="stats.total_entities || 0"></span>
+            </span>
+            <span class="text-sm text-slate-400">
+                关系: <span class="text-white font-medium" x-text="stats.total_relationships || 0"></span>
+            </span>
+        </div>
+    </div>
+    
+    <!-- 控制面板 -->
+    <div class="card mb-6">
+        <div class="card-body flex flex-wrap gap-4">
+            <input type="text"
+                   x-model="searchQuery"
+                   @keyup.enter="searchEntities()"
+                   class="form-input w-64"
+                   placeholder="搜索实体...">
+            <button @click="searchEntities()" class="btn btn-secondary">搜索</button>
+            <button @click="loadVisualization()" class="btn btn-secondary">刷新图谱</button>
+            <div class="flex items-center space-x-2 ml-auto">
+                <label class="text-sm text-slate-400">深度:</label>
+                <select x-model="depth" class="form-select w-20 text-sm">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 图谱可视化 -->
+    <div class="card">
+        <div class="card-body p-0">
+            <template x-if="loading">
+                <div class="flex justify-center items-center h-96">
+                    <div class="loading-spinner"></div>
+                </div>
+            </template>
+            
+            <template x-if="!loading && !stats.is_connected">
+                <div class="text-center py-16 text-slate-400">
+                    <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    <p>Neo4j 图数据库未连接</p>
+                    <p class="text-sm mt-2">请确保 Neo4j 服务正在运行并正确配置</p>
+                </div>
+            </template>
+            
+            <template x-if="!loading && stats.is_connected && vizData.nodes.length === 0">
+                <div class="text-center py-16 text-slate-400">
+                    <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                    </svg>
+                    <p>暂无图谱数据</p>
+                </div>
+            </template>
+            
+            <div id="graph-chart" class="h-96" x-show="!loading && vizData.nodes.length > 0"></div>
+        </div>
+    </div>
+    
+    <!-- 搜索结果 -->
+    <template x-if="searchResults.length > 0">
+        <div class="card mt-6">
+            <div class="card-header">
+                <h3 class="text-lg font-semibold">搜索结果</h3>
+            </div>
+            <div class="card-body">
+                <div class="space-y-2">
+                    <template x-for="entity in searchResults" :key="entity.id">
+                        <div class="flex items-center justify-between p-3 rounded-lg bg-slate-700/30 hover:bg-slate-700/50">
+                            <div>
+                                <div class="font-medium" x-text="entity.name"></div>
+                                <div class="text-sm text-slate-400" x-text="entity.entity_type"></div>
+                            </div>
+                            <button @click="focusEntity(entity.id)" class="btn btn-ghost btn-sm">
+                                查看
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </template>
+    
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function graphExplorerPage() {
+    return {
+        stats: {},
+        vizData: { nodes: [], links: [], categories: [] },
+        searchQuery: '',
+        searchResults: [],
+        loading: true,
+        depth: 2,
+        chart: null,
+        
+        async init() {
+            await this.loadStats();
+            if (this.stats.is_connected) {
+                await this.loadVisualization();
+            }
+            this.loading = false;
+        },
+        
+        async loadStats() {
+            try {
+                const response = await GraphAPI.stats();
+                this.stats = response.data || {};
+            } catch (error) {
+                console.error('加载统计失败', error);
+            }
+        },
+        
+        async loadVisualization(centerEntityId = null) {
+            try {
+                const params = { depth: this.depth, limit: 100 };
+                if (centerEntityId) {
+                    params.center_entity_id = centerEntityId;
+                }
+                
+                const response = await GraphAPI.visualization(params);
+                this.vizData = response.data || { nodes: [], links: [], categories: [] };
+                this.renderGraph();
+            } catch (error) {
+                console.error('加载可视化失败', error);
+            }
+        },
+        
+        async searchEntities() {
+            if (!this.searchQuery.trim()) return;
+            
+            try {
+                const response = await GraphAPI.searchEntities({
+                    query: this.searchQuery,
+                    limit: 10,
+                });
+                this.searchResults = response.data || [];
+            } catch (error) {
+                showToast('搜索失败', 'error');
+            }
+        },
+        
+        async focusEntity(entityId) {
+            await this.loadVisualization(entityId);
+            this.searchResults = [];
+        },
+        
+        renderGraph() {
+            const chartDom = document.getElementById('graph-chart');
+            if (!chartDom || this.vizData.nodes.length === 0) return;
+            
+            if (this.chart) {
+                this.chart.dispose();
+            }
+            
+            this.chart = echarts.init(chartDom);
+            
+            const option = {
+                tooltip: {},
+                legend: {
+                    data: this.vizData.categories.map(c => c.name),
+                    textStyle: { color: '#94a3b8' },
+                    top: 10,
+                },
+                series: [{
+                    type: 'graph',
+                    layout: 'force',
+                    data: this.vizData.nodes.map(n => ({
+                        id: n.id,
+                        name: n.name,
+                        category: this.vizData.categories.findIndex(c => c.name === n.category),
+                        symbolSize: Math.max(20, Math.min(50, n.value * 10)),
+                    })),
+                    links: this.vizData.links.map(l => ({
+                        source: l.source,
+                        target: l.target,
+                    })),
+                    categories: this.vizData.categories,
+                    roam: true,
+                    label: {
+                        show: true,
+                        position: 'right',
+                        color: '#e2e8f0',
+                    },
+                    force: {
+                        repulsion: 100,
+                        edgeLength: 100,
+                    },
+                    lineStyle: {
+                        color: '#475569',
+                        curveness: 0.3,
+                    },
+                }]
+            };
+            
+            this.chart.setOption(option);
+            window.addEventListener('resize', () => this.chart && this.chart.resize());
+        }
+    };
+}
+</script>
+{% endblock %}
+
